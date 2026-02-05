@@ -393,3 +393,41 @@ if run_btn or force_btn:
             else:
                 st.markdown(html.escape(note_text).replace("\n", "<br/>"), unsafe_allow_html=True)
                 st.info("No evidence returned by the model.")
+
+
+with tab_note_debug:
+    st.subheader("Single Note Analysis (Debug Mode)")
+
+    note_text = st.text_area(
+        "Paste clinical note text",
+        height=300,
+        placeholder="Paste one clinical note here..."
+    )
+
+    run_note_btn = st.button("Analyze Note")
+
+    if run_note_btn and note_text.strip():
+        with st.spinner("Running model on note..."):
+            try:
+                llm_res = run_llm(llm, note_text)
+            except Exception as e:
+                st.error(f"Model error: {e}")
+                st.stop()
+
+        c1, c2 = st.columns(2)
+        c1.metric("Housing Instability", llm_res["housing_instability"])
+        c2.metric("Reason Code", llm_res["reason_code"])
+
+        st.markdown("### Evidence")
+        if llm_res["evidence"]:
+            for ev in llm_res["evidence"]:
+                st.markdown(f"- {ev}")
+        else:
+            st.info("No evidence extracted.")
+
+        st.markdown("### Note with Highlighted Evidence")
+        highlighted = highlight_evidence(note_text, llm_res["evidence"])
+        st.markdown(highlighted)
+
+        with st.expander("Raw JSON"):
+            st.json(llm_res)
