@@ -19,33 +19,75 @@ MODEL_PATH = BASE_DIR / "models" / "mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 # --------------------------------------------------
 PROMPT_TEMPLATE = """You are a clinical NLP classifier. Return ONLY valid JSON.
 
-Task: Determine whether the patient has HOUSING INSTABILITY.
+TASK
+Determine whether the patient has CURRENT HOUSING INSTABILITY from the clinical note.
 
-Definition (positive):
-- Homelessness, unhoused, shelter use
-- Lack of stable housing / unstable living situation
-- Risk of losing housing / eviction / staying with others due to housing need
-- Housing assistance/resources requested or provided
-- Social work/case management for housing or homelessness evaluation
+DEFINITIONS
 
-Negative:
-- No housing-related need mentioned
-- Social work/resources for non-housing needs only (transport, food, insurance) WITHOUT housing context
+housing_instability = "positive" if the note explicitly indicates ANY of:
+- Current homelessness / unhoused / no stable place to live or sleep
+- Living in shelter, car, street, temporary arrangements due to housing need
+- Imminent housing loss (eviction risk, cannot pay rent, staying with others due to housing need)
+- Actively seeking or receiving housing assistance or housing case management
 
-Unknown:
-- Too vague to tell OR no explicit housing anchor in the note
+housing_instability = "negative" if the note explicitly indicates stable housing, such as:
+- Lives at home / apartment / rented or owned residence
+- Lives independently or with family/partner without housing concern
+- Has stable place to live
+- Social needs mentioned WITHOUT housing context (e.g., food, transport only)
 
-Rules:
+housing_instability = "unknown" if:
+- Housing status not mentioned
+- Too vague or no explicit housing anchor
+
+TEMPORAL RULES
+- Classify based ONLY on current status.
+- Past or resolved homelessness (e.g., "history of homelessness", "previously homeless") ≠ current instability.
+- Past homelessness alone → housing_instability = "positive" with risk_tier = "Low".
+
+SECONDARY TASK (ONLY if housing_instability = "positive")
+Assign housing risk tier based on CURRENT severity.
+
+RISK TIER DEFINITIONS (choose highest applicable)
+
+High:
+Patient currently homeless / unhoused / no stable place to sleep.
+Examples: "currently homeless", "living in shelter", "sleeping in car", "no fixed address", "staying on street"
+
+Medium:
+Not currently homeless BUT housing loss imminent OR actively pursuing housing assistance.
+Examples: "facing eviction", "risk of losing housing", "cannot pay rent", "applied for housing assistance",
+"working with housing case manager", "on housing waitlist", "seeking shelter placement", "staying with friends temporarily"
+
+Low:
+Housing instability concern WITHOUT current homelessness or imminent loss.
+Includes past homelessness.
+Examples: "housing insecure", "unstable housing", "housing concerns", "difficulty maintaining housing",
+"history of homelessness", "previously homeless", "formerly homeless now housed", "past shelter use"
+
+OUTPUT RULES
 - Use ONLY information explicitly stated in the note.
-- Evidence MUST be a verbatim quote from the note.
-- Output JSON only (no markdown, no extra text).
+- Evidence must be verbatim quote(s) from the note.
+- risk_tier MUST be one of: "High", "Medium", "Low", or null.
+- Assign risk_tier ONLY if housing_instability = "positive".
+- If housing_instability ≠ "positive", risk_tier = null.
+- Do NOT infer or assume.
+- Return JSON only.
 
-JSON schema:
-{{
-    "housing_instability": "positive|negative|unknown",
-    "reason_code": "HOUSING_ASSISTANCE_REQUEST|HOMELESSNESS_MENTIONED|HOUSING_RISK|NONE|INSUFFICIENT_INFO",
+JSON SCHEMA
+{
+    "housing_instability": "positive | negative | unknown",
+    "reason_code": "HOUSING_HOMELESS | HOUSING_RISK | HOUSING_ASSISTANCE | NONE | INSUFFICIENT_INFO",
+    "risk_tier": "High | Medium | Low | null",
     "evidence": ["verbatim quote"]
-}}
+}
+
+REASON CODE RULES
+- HOUSING_HOMELESS → current homelessness/unhoused
+- HOUSING_RISK → eviction risk / unstable / staying with others
+- HOUSING_ASSISTANCE → seeking/receiving housing services
+- NONE → stable housing
+- INSUFFICIENT_INFO → unknown
 
 Clinical note:
 <<<
